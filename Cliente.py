@@ -4,202 +4,180 @@ import socket
 import json
 import time
 
-# ... (Mantém as seções de Inicialização, Configurações de Tela, Cores, Fontes, Configurações do Jogo, Objetos, Estado) ...
-# (Vou omitir as seções que não mudam para economizar espaço, mas elas devem permanecer no seu código)
-# --- Inicialização do Pygame ---
 pygame.init()
 
-# --- Configurações da Tela ---
-SCREEN_WIDTH = 800
-SCREEN_HEIGHT = 600
+LARGURA_TELA = 800
+ALTURA_TELA = 600
 FPS = 120 
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-pygame.display.set_caption("Pong Cliente (Player 2)")
-clock = pygame.time.Clock()
+tela = pygame.display.set_mode((LARGURA_TELA, ALTURA_TELA))
+pygame.display.set_caption("Pong Cliente (Jogador 2)")
+relogio = pygame.time.Clock()
 
-# --- Cores ---
-BLACK = (0, 0, 0)
-WHITE = (255, 255, 255)
-YELLOW = (253, 249, 0)
-RED = (230, 41, 55)
-LIGHTGRAY = (200, 200, 200)
+PRETO = (0, 0, 0)
+BRANCO = (255, 255, 255)
+AMARELO = (253, 249, 0)
+VERMELHO = (230, 41, 55)
+CINZA_CLARO = (200, 200, 200)
 
-# --- Fontes ---
 try:
-    FONT_DEFAULT_PATH = pygame.font.get_default_font()
-    font_medium = pygame.font.Font(FONT_DEFAULT_PATH, 40)
-    font_small = pygame.font.Font(FONT_DEFAULT_PATH, 20)
-    font_large = pygame.font.Font(FONT_DEFAULT_PATH, 30)
+    CAMINHO_FONTE_PADRAO = pygame.font.get_default_font()
+    fonte_media = pygame.font.Font(CAMINHO_FONTE_PADRAO, 40)
+    fonte_pequena = pygame.font.Font(CAMINHO_FONTE_PADRAO, 20)
+    fonte_grande = pygame.font.Font(CAMINHO_FONTE_PADRAO, 30)
 except pygame.error:
-    print("Aviso: Fonte padrão não encontrada. Usando fonte do sistema.")
-    font_medium = pygame.font.SysFont(None, 50)
-    font_small = pygame.font.SysFont(None, 30)
-    font_large = pygame.font.SysFont(None, 40)
+    print("Fonte padrão não encontrada.")
+    fonte_media = pygame.font.SysFont(None, 50)
+    fonte_pequena = pygame.font.SysFont(None, 30)
+    fonte_grande = pygame.font.SysFont(None, 40)
 
-# --- Configurações Visuais e de Jogo ---
-PADDLE_WIDTH = 20
-PADDLE_HEIGHT = 100
-BALL_RADIUS = 10
-PLAYER_SPEED = 5.0 
-WINNING_SCORE = 5
+LARGURA_RAQUETE = 20
+ALTURA_RAQUETE = 100
+RAIO_BOLA = 10
+VELOCIDADE_JOGADOR = 5.0 
+PONTOS_PARA_VENCER = 5
 
-# --- Objetos do Jogo ---
-player1_rect = pygame.Rect(SCREEN_WIDTH - PADDLE_WIDTH - 50, SCREEN_HEIGHT // 2 - PADDLE_HEIGHT // 2, PADDLE_WIDTH, PADDLE_HEIGHT)
-player2_rect = pygame.Rect(50, SCREEN_HEIGHT // 2 - PADDLE_HEIGHT // 2, PADDLE_WIDTH, PADDLE_HEIGHT)
+ret_jogador1 = pygame.Rect(LARGURA_TELA - LARGURA_RAQUETE - 50, ALTURA_TELA // 2 - ALTURA_RAQUETE // 2, LARGURA_RAQUETE, ALTURA_RAQUETE)
+ret_jogador2 = pygame.Rect(50, ALTURA_TELA // 2 - ALTURA_RAQUETE // 2, LARGURA_RAQUETE, ALTURA_RAQUETE)
+pos_bola = [LARGURA_TELA / 2, ALTURA_TELA / 2] 
 
-ball_pos = [SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2] 
+pontos1 = 0
+pontos2 = 0
+jogo_iniciado = False
+jogo_encerrado = False
 
-# --- Estado do Jogo ---
-score1 = 0
-score2 = 0
-game_started_from_server = False
-game_over_from_server = False
+IP_SERVIDOR = '127.0.0.1'  
+PORTA_SERVIDOR = 12345
+socket_cliente = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+conectado = False
+buffer_recebido = b""
 
-# --- Configurações de Rede ---
-SERVER_IP = '127.0.0.1'  
-SERVER_PORT = 12345
-client_socket_obj = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-connected_to_server = False
-receive_buffer_client = b"" # Buffer para dados recebidos do servidor
-
-# --- Funções Auxiliares ---
-def draw_text(text, font, color, surface, x, y, center=False):
-    text_obj = font.render(text, True, color)
-    text_rect = text_obj.get_rect()
-    if center:
-        text_rect.center = (x, y)
+def desenhar_texto(texto, fonte, cor, superficie, x, y, centralizado=False):
+    obj_texto = fonte.render(texto, True, cor)
+    ret_texto = obj_texto.get_rect()
+    if centralizado:
+        ret_texto.center = (x, y)
     else:
-        text_rect.topleft = (x, y)
-    surface.blit(text_obj, text_rect)
+        ret_texto.topleft = (x, y)
+    superficie.blit(obj_texto, ret_texto)
 
-def connect_to_server():
-    global connected_to_server, client_socket_obj
+def conectar_ao_servidor():
+    global conectado, socket_cliente
     try:
-        draw_text("Conectando ao servidor...", font_small, YELLOW, screen, SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2, center=True)
+        desenhar_texto("Conectando ao servidor...", fonte_pequena, AMARELO, tela, LARGURA_TELA // 2, ALTURA_TELA // 2, centralizado=True)
         pygame.display.flip()
-        print(f"Tentando conectar ao servidor em {SERVER_IP}:{SERVER_PORT}...")
-        client_socket_obj.connect((SERVER_IP, SERVER_PORT))
-        client_socket_obj.settimeout(0.1) # Timeout para recv
-        connected_to_server = True
+        print(f"Tentando conectar ao servidor em {IP_SERVIDOR}:{PORTA_SERVIDOR}...")
+        socket_cliente.connect((IP_SERVIDOR, PORTA_SERVIDOR))
+        socket_cliente.settimeout(0.1)
+        conectado = True
         print("Conectado ao servidor!")
         return True
     except socket.error as e:
-        print(f"Falha ao conectar ao servidor: {e}")
+        print(f"Erro ao conectar: {e}")
         return False
 
-# --- Loop Principal do Cliente ---
-if not connect_to_server():
-    running = False
-    screen.fill(BLACK)
-    draw_text("FALHA AO CONECTAR AO SERVIDOR.", font_small, RED, screen, SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2, center=True)
-    draw_text("Verifique se o servidor está em execução.", font_small, RED, screen, SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 30, center=True)
+if not conectar_ao_servidor():
+    em_execucao = False
+    tela.fill(PRETO)
+    desenhar_texto("FALHA AO CONECTAR AO SERVIDOR.", fonte_pequena, VERMELHO, tela, LARGURA_TELA // 2, ALTURA_TELA // 2, centralizado=True)
+    desenhar_texto("Verifique se o servidor está em execução.", fonte_pequena, VERMELHO, tela, LARGURA_TELA // 2, ALTURA_TELA // 2 + 30, centralizado=True)
     pygame.display.flip()
     time.sleep(3)
 else:
-    running = True
+    em_execucao = True
 
-while running:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
+while em_execucao:
+    for evento in pygame.event.get():
+        if evento.type == pygame.QUIT:
+            em_execucao = False
 
-    current_player2_y = player2_rect.y 
-    keys = pygame.key.get_pressed()
-    if keys[pygame.K_w] and player2_rect.top > 0:
-        current_player2_y -= PLAYER_SPEED
-    if keys[pygame.K_s] and player2_rect.bottom < SCREEN_HEIGHT:
-        current_player2_y += PLAYER_SPEED
-    current_player2_y = max(0, min(current_player2_y, SCREEN_HEIGHT - PADDLE_HEIGHT))
-    # A posição visual de player2_rect.y será atualizada pelo servidor.
-    # Guardamos current_player2_y para enviar.
+    pos_y_atual_jogador2 = ret_jogador2.y 
+    teclas = pygame.key.get_pressed()
+    if teclas[pygame.K_w] and ret_jogador2.top > 0:
+        pos_y_atual_jogador2 -= VELOCIDADE_JOGADOR
+    if teclas[pygame.K_s] and ret_jogador2.bottom < ALTURA_TELA:
+        pos_y_atual_jogador2 += VELOCIDADE_JOGADOR
+    pos_y_atual_jogador2 = max(0, min(pos_y_atual_jogador2, ALTURA_TELA - ALTURA_RAQUETE))
 
-    if connected_to_server:
-        client_input_data = {"player2_y": current_player2_y}
+    if conectado:
+        dados_envio = {"player2_y": pos_y_atual_jogador2}
         try:
-            message_to_send = json.dumps(client_input_data) + '\n' 
-            client_socket_obj.sendall(message_to_send.encode('utf-8'))
+            mensagem = json.dumps(dados_envio) + '\n'
+            socket_cliente.sendall(mensagem.encode('utf-8'))
         except socket.error as e:
-            print(f"Erro ao enviar dados para o servidor: {e}")
-            running = False 
+            print(f"Erro ao enviar: {e}")
+            em_execucao = False 
             break
 
         try:
-            data_chunk = client_socket_obj.recv(2048)
-            if not data_chunk:
-                print("Servidor desconectou (recv retornou vazio/EOF).")
-                running = False
+            pacote = socket_cliente.recv(2048)
+            if not pacote:
+                print("Servidor desconectado.")
+                em_execucao = False
                 break
-            receive_buffer_client += data_chunk
+            buffer_recebido += pacote
 
-            while b'\n' in receive_buffer_client:
-                message_bytes, receive_buffer_client = receive_buffer_client.split(b'\n', 1)
-                server_data_str = message_bytes.decode('utf-8').strip()
+            while b'\n' in buffer_recebido:
+                dados_brutos, buffer_recebido = buffer_recebido.split(b'\n', 1)
+                dados_str = dados_brutos.decode('utf-8').strip()
 
-                if not server_data_str:
+                if not dados_str:
                     continue
                 
-                # print(f"CLIENTE DEBUG: Processing message from server: '{server_data_str}'")
-                server_state = json.loads(server_data_str)
+                estado = json.loads(dados_str)
                 
-                ball_pos[0] = server_state.get("ball_x", ball_pos[0])
-                ball_pos[1] = server_state.get("ball_y", ball_pos[1])
-                player1_rect.y = server_state.get("player1_y", player1_rect.y)
-                player2_rect.y = server_state.get("player2_y", player2_rect.y) 
-                score1 = server_state.get("score1", score1)
-                score2 = server_state.get("score2", score2)
-                game_started_from_server = server_state.get("game_started", game_started_from_server)
-                game_over_from_server = server_state.get("game_over", game_over_from_server)
+                pos_bola[0] = estado.get("ball_x", pos_bola[0])
+                pos_bola[1] = estado.get("ball_y", pos_bola[1])
+                ret_jogador1.y = estado.get("player1_y", ret_jogador1.y)
+                ret_jogador2.y = estado.get("player2_y", ret_jogador2.y) 
+                pontos1 = estado.get("score1", pontos1)
+                pontos2 = estado.get("score2", pontos2)
+                jogo_iniciado = estado.get("game_started", jogo_iniciado)
+                jogo_encerrado = estado.get("game_over", jogo_encerrado)
 
         except socket.timeout:
             pass 
         except json.JSONDecodeError as e:
-            print(f"Erro ao decodificar JSON do servidor: {e}. Dados problemáticos: '{server_data_str[:100]}'")
-            # Limpar o buffer pode ser uma boa ideia aqui para evitar erros repetidos com os mesmos dados
-            # receive_buffer_client = b"" # Ou apenas a parte que causou erro
-            pass # Tenta continuar
+            print(f"Erro JSON: {e}. Dados: '{dados_str[:100]}'")
+            pass
         except (socket.error, UnicodeDecodeError) as e:
-            print(f"Erro de socket/decodificação ao receber do servidor: {e}")
-            running = False
+            print(f"Erro de conexão: {e}")
+            em_execucao = False
             break
         except ConnectionResetError:
-            print("Conexão com o servidor foi resetada.")
-            running = False
+            print("Conexão resetada.")
+            em_execucao = False
             break
 
-    # --- Desenho ---
-    screen.fill(BLACK)
-    pygame.draw.rect(screen, WHITE, player1_rect) 
-    pygame.draw.rect(screen, WHITE, player2_rect) 
-    pygame.draw.circle(screen, WHITE, (int(ball_pos[0]), int(ball_pos[1])), BALL_RADIUS)
+    tela.fill(PRETO)
+    pygame.draw.rect(tela, BRANCO, ret_jogador1) 
+    pygame.draw.rect(tela, BRANCO, ret_jogador2) 
+    pygame.draw.circle(tela, BRANCO, (int(pos_bola[0]), int(pos_bola[1])), RAIO_BOLA)
 
-    draw_text(str(score2), font_medium, WHITE, screen, SCREEN_WIDTH // 4, 20, center=True)
-    draw_text(str(score1), font_medium, WHITE, screen, SCREEN_WIDTH * 3 // 4, 20, center=True)
+    desenhar_texto(str(pontos2), fonte_media, BRANCO, tela, LARGURA_TELA // 4, 20, centralizado=True)
+    desenhar_texto(str(pontos1), fonte_media, BRANCO, tela, LARGURA_TELA * 3 // 4, 20, centralizado=True)
 
-    if not connected_to_server:
-        pass 
-    elif not game_started_from_server and not game_over_from_server:
-        draw_text("AGUARDANDO PLAYER 1 (SERVIDOR) INICIAR", font_small, YELLOW, screen, SCREEN_WIDTH // 2, SCREEN_HEIGHT - 50, center=True)
+    if conectado and not jogo_iniciado and not jogo_encerrado:
+        desenhar_texto("AGUARDANDO PLAYER 1 (SERVIDOR) INICIAR", fonte_pequena, AMARELO, tela, LARGURA_TELA // 2, ALTURA_TELA - 50, centralizado=True)
     
-    if game_over_from_server:
-        winner_text = "FIM DE JOGO" 
-        if score1 >= WINNING_SCORE: 
-            winner_text = "PLAYER 1 VENCEU!"
-        elif score2 >= WINNING_SCORE: 
-            winner_text = "PLAYER 2 VENCEU!"
+    if jogo_encerrado:
+        texto_vitoria = "FIM DE JOGO" 
+        if pontos1 >= PONTOS_PARA_VENCER: 
+            texto_vitoria = "PLAYER 1 VENCEU!"
+        elif pontos2 >= PONTOS_PARA_VENCER: 
+            texto_vitoria = "PLAYER 2 VENCEU!"
         
-        draw_text(winner_text, font_large, RED, screen, SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 50, center=True)
-        draw_text("AGUARDANDO REINÍCIO PELO SERVIDOR", font_small, LIGHTGRAY, screen, SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 20, center=True)
+        desenhar_texto(texto_vitoria, fonte_grande, VERMELHO, tela, LARGURA_TELA // 2, ALTURA_TELA // 2 - 50, centralizado=True)
+        desenhar_texto("AGUARDANDO REINÍCIO PELO SERVIDOR", fonte_pequena, CINZA_CLARO, tela, LARGURA_TELA // 2, ALTURA_TELA // 2 + 20, centralizado=True)
 
     pygame.display.flip()
-    clock.tick(FPS)
+    relogio.tick(FPS)
 
-# --- Fim do Jogo ---
 print("Encerrando cliente...")
-if connected_to_server and client_socket_obj:
+if conectado and socket_cliente:
     try:
-        client_socket_obj.shutdown(socket.SHUT_RDWR) 
+        socket_cliente.shutdown(socket.SHUT_RDWR)
     except socket.error:
         pass 
-    client_socket_obj.close()
+    socket_cliente.close()
 pygame.quit()
 sys.exit()
