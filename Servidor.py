@@ -50,14 +50,17 @@ jogo_iniciado = False
 jogo_finalizado = False
 aguardando_cliente = True
 
-IP_SERVIDOR = '0.0.0.0'
-PORTA_SERVIDOR = 12345
+# Configuração do Servidor
+
+IP_SERVIDOR = '0.0.0.0' #Recebe todos os sinais da rede local
+PORTA_SERVIDOR = 12345  #normalmente para testes
 cliente_conexao = None
 cliente_endereco = None
 
 pos_y_jogador2 = float(jogador2.y)
-trava_jogador2 = threading.Lock()
+trava_jogador2 = threading.Lock() #A chave mutex para acessar a variável acima
 
+# Funções Auxiliares
 def reiniciar_bola():
     global jogo_iniciado, pos_bola, vel_bola
     jogo_iniciado = False
@@ -88,8 +91,8 @@ def desenhar_texto(texto, fonte, cor, superficie, x, y, centralizar=False):
 
 reiniciar_jogo()
 
-def lidar_com_cliente(conexao, endereco):
-    global pos_y_jogador2, cliente_conexao, cliente_endereco, aguardando_cliente
+def lidar_com_cliente(conexao, endereco): #função que a thread irá executar
+    global pos_y_jogador2, cliente_conexao, cliente_endereco, aguardando_cliente #
     print(f"Cliente {endereco} conectado.")
     cliente_conexao = conexao
     cliente_endereco = endereco
@@ -100,20 +103,20 @@ def lidar_com_cliente(conexao, endereco):
     try:
         while True:
             try:
-                dados = conexao.recv(1024)
+                dados = conexao.recv(1024) #Recebe dados de até 1024 bytes
                 if not dados:
                     break
                 buffer_recebido += dados
-                while b'\n' in buffer_recebido:
-                    msg, buffer_recebido = buffer_recebido.split(b'\n', 1)
-                    dados_cliente = json.loads(msg.decode('utf-8').strip())
-                    y_recebido = dados_cliente.get('player2_y')
-                    if isinstance(y_recebido, (int, float)):
-                        with trava_jogador2:
+                while b'\n' in buffer_recebido: # Recebendo Json do cliente
+                    msg, buffer_recebido = buffer_recebido.split(b'\n', 1) 
+                    dados_cliente = json.loads(msg.decode('utf-8').strip()) #Json para dic python
+                    y_recebido = dados_cliente.get('player2_y') # posicao do player 2 que o cliente mandou
+                    if isinstance(y_recebido, (int, float)): # Verifica se o dado é int ou float ou nenhum erro
+                        with trava_jogador2: #cuida do acesso a região crítica
                             pos_y_jogador2 = float(y_recebido)
-            except socket.timeout:
+            except socket.timeout: # Demora na conexão
                 pass
-            except json.JSONDecodeError:
+            except json.JSONDecodeError: # cuida do load
                 pass
             except (socket.error, UnicodeDecodeError):
                 break
@@ -127,42 +130,47 @@ def lidar_com_cliente(conexao, endereco):
         cliente_endereco = None
         aguardando_cliente = True
 
-servidor_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-servidor_socket.setblocking(False)
+servidor_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # Cria o socket, Ipv4 e TCP
+servidor_socket.setblocking(False) # Não ser bloqueante
 try:
-    servidor_socket.bind((IP_SERVIDOR, PORTA_SERVIDOR))
-    servidor_socket.listen(1)
+    servidor_socket.bind((IP_SERVIDOR, PORTA_SERVIDOR)) #associa o socket a um enddereço de rede
+    servidor_socket.listen(1) # conectar pelo menos 1
     print(f"Servidor ouvindo em {IP_SERVIDOR}:{PORTA_SERVIDOR}")
 except socket.error as e:
     pygame.quit()
     sys.exit()
 
-thread_cliente = None
-rodando = True
 
-while rodando:
+# teste
+thread_cliente = None
+running = True
+
+
+ #loop principal do jogo
+while running:
     for evento in pygame.event.get():
         if evento.type == pygame.QUIT:
-            rodando = False
+            running = False
         if evento.type == pygame.KEYDOWN:
             if not jogo_iniciado and not jogo_finalizado and cliente_conexao and evento.key == pygame.K_SPACE:
                 jogo_iniciado = True
             if jogo_finalizado and evento.key == pygame.K_RETURN:
                 reiniciar_jogo()
 
-    if aguardando_cliente:
+    #Onde cria thread
+    if aguardando_cliente: #espera cliente se conectar para tentar criar a thread de comunicação
         try:
-            conexao_temp, endereco_temp = servidor_socket.accept()
-            if thread_cliente and thread_cliente.is_alive():
-                if cliente_conexao:
-                    try: cliente_conexao.shutdown(socket.SHUT_RDWR)
+            conexao_temp, endereco_temp = servidor_socket.accept() # escuta novas conexoes
+            if thread_cliente and thread_cliente.is_alive(): # Se a thread do cliente existe E ainda está em execução:
+                if cliente_conexao: # Se o objeto socket do cliente  (não é None):
+                    try: cliente_conexao.shutdown(socket.SHUT_RDWR) # Enecerra a conexão indesejada
                     except socket.error: pass
                     cliente_conexao.close()
-                thread_cliente.join(timeout=0.1)
+                thread_cliente.join(timeout=0.1) # Esperar a thread acabar
 
-            thread_cliente = threading.Thread(target=lidar_com_cliente, args=(conexao_temp, endereco_temp))
-            thread_cliente.daemon = True
-            thread_cliente.start()
+            thread_cliente = threading.Thread(target=lidar_com_cliente, args=(conexao_temp, endereco_temp)) # Faz a thread executar a função "lidar cliente"
+            thread_cliente.daemon = True # thread não bloqueante
+            thread_cliente.start() # Inicia a thread
         except BlockingIOError:
             pass
         except socket.error:
@@ -212,7 +220,7 @@ while rodando:
                 jogo_finalizado = True
                 jogo_iniciado = False
 
-    if cliente_conexao:
+    if cliente_conexao: # Enviando o json para o cliente
         estado = {
             "ball_x": pos_bola[0], "ball_y": pos_bola[1],
             "player1_y": jogador1.y, "player2_y": jogador2.y,
